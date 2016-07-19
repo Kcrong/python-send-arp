@@ -1,6 +1,9 @@
 # IDE FILES
 .idea/
 
+# Ignore Lab file
+test.py
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -90,3 +93,4 @@ ENV/
 
 # Rope project settings
 .ropeproject
+test.py
