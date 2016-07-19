@@ -10,7 +10,7 @@ from socket import *
 from struct import pack
 
 
-def get_interfaces(ip=False):
+def get_interface_info(ip=False):
     """
     아이피를 인자로 받아 해당 아이피를 가진 인터페이스의 이름을 반환
     :param ip: ip to find interface
@@ -29,7 +29,7 @@ def get_interfaces(ip=False):
 
     for name, mac_addr, ip_addr in interfaces:
         if ip_addr == ip:
-            return name
+            return name, mac_addr
 
     # 해당 아이피를 가진 인터페이스가 없으면 False 반환
     return False
@@ -43,24 +43,18 @@ def packing_ip(ip):
     return pack('!4B', *[int(ip) for ip in ip.split('.')])
 
 
-def get_my_ip(target_ip):
+def get_my_interface_info(target_ip):
     """
     :param target_ip: victim's ip address
     :return: ip address that connect with victim
     """
     with socket(AF_INET, SOCK_DGRAM) as s:
         s.connect((target_ip, 219))  # 219 is ARP port
-        return s.getsockname()[0]
+        my_ip = s.getsockname()[0]
 
+    name, mac = get_interface_info(my_ip)
 
-def get_my_mac():
-    """
-    Get my mac address using raw socket
-    :return: My mac address
-    """
-
-    with socket(AF_PACKET, SOCK_RAW, SOCK_RAW) as s:
-        s.bind(())
+    return name, my_ip, mac
 
 
 def get_victim_mac(target_ip):
@@ -70,12 +64,12 @@ def get_victim_mac(target_ip):
 def main():
     # argv check
     # if 3 != len(sys.argv):
-    #     print("Usage: python3 %s [interface] [victim_ip]\nEx) python3 main.py eth0 192.168.0.4")
+    #     print("Usage: python3 %s [victim_ip]\nEx) python3 main.py eth0 192.168.0.4")
 
     interface = 'wlan0'  # sys.argv[1]
     victim_ip = '192.168.1.1'
 
-    my_ip = get_my_ip(victim_ip)
+    name, ip, mac = get_my_interface_info(victim_ip)
     victim_mac = get_victim_mac(victim_ip)
 
 
