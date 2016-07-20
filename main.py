@@ -6,15 +6,18 @@ python3 main.py [victim ip]
 
 import re
 import subprocess
+import binascii
 from socket import *
 
 from packet_header_define import *
+from struct import unpack
 
 
 class ARP:
     def __init__(self, victim):
         self.target_ip = victim
         self.name, self.ip, self.mac = self._get_my_interface_info()
+        self.target_mac = self._get_victim_mac()
 
     def _get_my_interface_info(self):
         """
@@ -118,13 +121,38 @@ class ARP:
         # Just byte code
         s.send(b''.join(packet_frame))
 
+    def _receive_arp(self, target_ip):
+        """
+        target_ip 의 Reply packet 을 확인하여 mac 주소를 반환합니다.
+        :param target_ip: target's ip address
+        :return: target's mac address
+        """
+        s = socket(AF_PACKET, SOCK_RAW, htons(0x0003))
+
+        while True:
+            packet = s.recvfrom(2048)
+
+            ethernet_unpacked = unpack("!6s6s2s", packet[0][0:14])
+
+            arp_header = packet[0][14:42]
+            arp_unpacked = unpack("2s2s1s1s2s6s4s6s4s", arp_header)
+
+            source_ip = inet_ntoa(arp_unpacked[6])
+
+            if ethernet_unpacked[2] != ARP_TYPE_ETHERNET_PROTOCOL:
+                continue
+
+            elif source_ip == target_ip:
+                print("Target MAC detected: %s" % binascii.hexlify(arp_unpacked[5]))
+                return arp_unpacked[5]
+
     def _get_victim_mac(self):
         """
         target_ip 에게 ARP Request 를 보내 MAC 주소를 받아옴
 
         :return: victim's mac address
         """
-        return self.target_ip
+        return self._receive_arp(self.target_ip)
 
 
 def main():
