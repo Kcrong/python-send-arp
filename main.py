@@ -43,18 +43,22 @@ class ARP:
         """
 
         name_pattern = "^(\w+)\s"
-        mac_addr_pattern = ".*?HWaddr[ ]([0-9A-Fa-f:]{17})"
+        # mac_addr_pattern = ".*?HWaddr[ ]([0-9A-Fa-f:]{17})"
         ip_addr_pattern = ".*?\n\s+inet[ ]addr:((?:\d+\.){3}\d+)"
-        pattern = re.compile("".join((name_pattern, mac_addr_pattern, ip_addr_pattern)),
+        #       pattern = re.compile("".join((name_pattern, mac_addr_pattern, ip_addr_pattern)),
+        pattern = re.compile("".join((name_pattern, ip_addr_pattern)),
                              flags=re.MULTILINE)
 
         # 정규식을 이용해 ifconfig 명령어 결과를 파싱
         ifconfig_result = subprocess.check_output("ifconfig").decode()
         interfaces = pattern.findall(ifconfig_result)
 
-        for name, mac_addr, ip_addr in interfaces:
+        for name, ip_addr in interfaces:
             if ip == ip_addr:
-                return name, mac_addr
+                # 구한 Interface 이름을 이용해 MAC 주소를 raw socket 을 이용해 convert 된 값을 가져옴
+                with socket(AF_PACKET, SOCK_RAW, SOCK_RAW) as s:
+                    s.bind((name, SOCK_RAW))
+                    return name, s.getsockname()[4]
 
         # 해당 아이피를 가진 인터페이스가 없으면 False 반환
         return False
@@ -87,7 +91,7 @@ class ARP:
         packet_frame = [
             # # Ethernet Frame
             # Dest MAC
-            BROADCAST_MAC,
+            BROADCAST_MASK,
 
             # Src MAC
             packed_sender_mac,
@@ -109,7 +113,7 @@ class ARP:
             packed_sender_ip,
 
             # Broadcast? Unicast?
-            ZERO_MAC,  # i just want unicast
+            ZERO_MASK,  # i just want unicast
 
             # Target IP addr
             packed_target_ip
@@ -160,9 +164,8 @@ class ARP:
 
 
 def main():
-    # argv check
-    # if 3 != len(sys.argv):
-    #     print("Usage: python3 %s [victim_ip]\nEx) python3 main.py eth0 192.168.0.4")
+
+
 
     victim_ip = '192.168.1.1'
     arp = ARP(victim_ip)
