@@ -7,7 +7,8 @@ python3 main.py [victim ip]
 import re
 import subprocess
 from socket import *
-from struct import pack
+
+from packet_header_define import *
 
 ARP_REQUEST = 0
 ARP_RECEIVE = 1
@@ -75,7 +76,9 @@ class ARP:
         :return: None. Just send packet
         """
 
-        s = socket(AF_PACKET, SOCK_RAW, SOCK_RAW)
+
+
+
 
     def _get_victim_mac(self):
         """
