@@ -189,7 +189,7 @@ class ARP:
 
 
 def main():
-    victim_ip = '192.168.1.82'
+    victim_ip = input("Victim IP: ")
     arp = ARP(victim_ip)
 
     # target에 변조된 ARP 패킷을 보냄
