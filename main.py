@@ -127,6 +127,10 @@ class ARP:
         :param target_ip: target's ip address
         :return: target's mac address
         """
+
+        # Before waiting ARP-REPLY, Send REQUEST
+        self.send_arp(ARP_REQUEST_OP)
+
         s = socket(AF_PACKET, SOCK_RAW, htons(0x0003))
 
         while True:
