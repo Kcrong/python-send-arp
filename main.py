@@ -14,6 +14,11 @@ from struct import unpack
 
 
 class ARP:
+    @staticmethod
+    def pretty_mac(mac):
+        unpacked = binascii.hexlify(mac).decode('utf-8')
+        return ":".join([i+j for i, j in zip(unpacked[::2], unpacked[1::2])])
+
     def __init__(self, victim):
         self.target_ip = victim
         self.name, self.ip, self.mac = self._get_my_interface_info()
@@ -121,6 +126,8 @@ class ARP:
             # Done!
         ]
 
+        print("Send to %s" % self.target_ip)
+
         # GOGOGO!
         # Just byte code
         s.send(b''.join(packet_frame))
@@ -131,6 +138,8 @@ class ARP:
         :param target_ip: target's ip address
         :return: target's mac address
         """
+
+        print("Waiting For ARP-Reply...")
 
         # Before waiting ARP-REPLY, Send REQUEST
         self.send_arp(ARP_REQUEST_OP)
@@ -146,13 +155,14 @@ class ARP:
             arp_unpacked = unpack("2s2s1s1s2s6s4s6s4s", arp_header)
 
             source_ip = inet_ntoa(arp_unpacked[6])
+            mac = arp_unpacked[5]
 
             if ethernet_unpacked[2] != ARP_TYPE_ETHERNET_PROTOCOL:
                 continue
 
             elif source_ip == target_ip:
-                print("Target MAC detected: %s" % binascii.hexlify(arp_unpacked[5]))
-                return arp_unpacked[5]
+                print("Target MAC detected: %s" % self.pretty_mac(mac))
+                return mac
 
     def _get_victim_mac(self):
         """
@@ -164,9 +174,6 @@ class ARP:
 
 
 def main():
-
-
-
     victim_ip = '192.168.1.1'
     arp = ARP(victim_ip)
 
