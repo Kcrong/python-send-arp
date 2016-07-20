@@ -57,7 +57,7 @@ class ARP:
         return False
 
     @staticmethod
-    def packing_ip(ip):
+    def _packing_ip(ip):
         """
         우리가 사용하는 String Format ( "123.123.123.123" ) 을 Big-endian 으로 packing 해주는 함수
 
@@ -78,8 +78,8 @@ class ARP:
         s.bind((self.name, SOCK_RAW))
 
         packed_sender_mac = s.getsockname()[4]
-        packed_sender_ip = self.packing_ip(self.ip)
-        packed_target_ip = self.packing_ip(self.target_ip)
+        packed_sender_ip = self._packing_ip(self.ip)
+        packed_target_ip = self._packing_ip(self.target_ip)
 
         packet_frame = [
             # # Ethernet Frame
