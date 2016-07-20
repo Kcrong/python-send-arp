@@ -39,7 +39,7 @@ class ARP:
         아이피를 인자로 받아 해당 아이피를 가진 인터페이스의 이름을 반환
 
         :param ip: ip to find interface
-        :return: interface name that has ip
+        :return: interface info that has ip
         """
 
         name_pattern = "^(\w+)\s"
