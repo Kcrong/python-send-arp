@@ -10,14 +10,11 @@ from socket import *
 
 from packet_header_define import *
 
-ARP_REQUEST = 0
-ARP_RECEIVE = 1
-
 
 class ARP:
     def __init__(self, victim):
         self.target_ip = victim
-        self.name, self.mac, self.ip = self._get_my_interface_info()
+        self.name, self.ip, self.mac = self._get_my_interface_info()
 
     def _get_my_interface_info(self):
         """
@@ -33,7 +30,8 @@ class ARP:
 
         return name, my_ip, mac
 
-    def _get_interface_info(self, ip=False):
+    @staticmethod
+    def _get_interface_info(ip):
         """
         아이피를 인자로 받아 해당 아이피를 가진 인터페이스의 이름을 반환
 
@@ -52,7 +50,7 @@ class ARP:
         interfaces = pattern.findall(ifconfig_result)
 
         for name, mac_addr, ip_addr in interfaces:
-            if ip and self.ip == ip_addr:
+            if ip == ip_addr:
                 return name, mac_addr
 
         # 해당 아이피를 가진 인터페이스가 없으면 False 반환
@@ -72,13 +70,53 @@ class ARP:
         """
         send_type 에 따라 target_ip에 arp 패킷을 전송합니다.
 
-        :param send_type: ARP_REQUEST 혹은 ARP_RECEIVE 중 하나. arp 패킷의 종류
+        :param send_type: Request 나 Receive 에 대한 Opcode.
         :return: None. Just send packet
         """
 
+        s = socket(AF_PACKET, SOCK_RAW, SOCK_RAW)
+        s.bind((self.name, SOCK_RAW))
 
+        packed_sender_mac = s.getsockname()[4]
+        packed_sender_ip = self.packing_ip(self.ip)
+        packed_target_ip = self.packing_ip(self.target_ip)
 
+        packet_frame = [
+            # # Ethernet Frame
+            # Dest MAC
+            BROADCAST_MAC,
 
+            # Src MAC
+            packed_sender_mac,
+
+            # Protocol type
+            ARP_TYPE_ETHERNET_PROTOCOL,
+
+            # ############################################3
+            # # ARP
+            ARP_PROTOCOL_TYPE,
+
+            # ARP type
+            send_type,
+
+            # Sender MAC addr
+            packed_sender_mac,
+
+            # Sender IP addr
+            packed_sender_ip,
+
+            # Broadcast? Unicast?
+            ZERO_MAC,  # i just want unicast
+
+            # Target IP addr
+            packed_target_ip
+
+            # Done!
+        ]
+
+        # GOGOGO!
+        # Just byte code
+        s.send(b''.join(packet_frame))
 
     def _get_victim_mac(self):
         """
@@ -97,7 +135,7 @@ def main():
     victim_ip = '192.168.1.1'
     arp = ARP(victim_ip)
 
-    arp.send_arp(ARP_REQUEST)
+    arp.send_arp(ARP_REQUEST_OP)
 
 
 if __name__ == '__main__':
