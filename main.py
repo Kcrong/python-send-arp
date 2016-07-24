@@ -85,6 +85,10 @@ class ARP:
         return name, my_ip, mac
 
     def calc_arp_refresh(self):
+        """
+        Victim 의 ARP table 갱신 주기를 계산후, 그 시간을 반환
+        :return: refresh interval time (float)
+        """
         print("Calculate Victim's ARP table Refresh interval")
 
         self._get_mac(self.victim_ip)
