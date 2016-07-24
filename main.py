@@ -322,7 +322,7 @@ def main():
 
     while True:
         arp.send_arp(ARP_REPLY_OP)
-        time.sleep(arp.target_arp_refresh_interval)  # 5초 마다 감염 패킷 전송
+        time.sleep(arp.target_arp_refresh_interval)
 
 
 if __name__ == '__main__':
