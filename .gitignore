@@ -1,6 +1,9 @@
 # IDE FILES
 .idea/
 
+# Private Memo
+memo.txt
+
 # Ignore Lab file
 test.py
 
