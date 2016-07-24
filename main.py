@@ -18,6 +18,12 @@ from packet_header_define import *
 
 
 class ARP:
+
+    def run(self):
+        while True:
+            self.send_arp(ARP_REPLY_OP)
+            time.sleep(self.target_arp_refresh_interval)
+
     @staticmethod
     def get_headers(packet):
         """
@@ -338,9 +344,7 @@ def main():
     # target에 변조된 ARP 패킷을 보냄
     # target의 arp-table 을 변조
 
-    while True:
-        arp.send_arp(ARP_REPLY_OP)
-        time.sleep(arp.target_arp_refresh_interval)
+    arp.run()
 
 
 if __name__ == '__main__':
