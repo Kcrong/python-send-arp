@@ -8,9 +8,9 @@ import os
 import re
 import time
 import subprocess
-import binascii
 
 from socket import *
+from binascii import hexlify
 
 from multiprocessing import current_process, Process
 from packet_header_define import *
@@ -19,8 +19,30 @@ from struct import unpack
 
 class ARP:
     @staticmethod
+    def get_headers(packet):
+        return unpack("!6s6s2s", packet[0][0:14]), unpack("2s2s1s1s2s6s4s6s4s", packet[0][14:42])
+
+    @staticmethod
+    def analysis_header(header):
+        # if ethernet header
+        if len(header) == 3:
+            return {
+                'src_mac': hexlify(header[1]),
+                'dst_mac': hexlify(header[0]),
+                'type': hexlify(header[2])
+            }
+        # if arp header
+        else:
+            return {
+                'src_ip': inet_ntoa(header[6]),
+                'src_mac': hexlify(header[5]),
+                'dst_ip': inet_ntoa(header[8]),
+                'dst_mac': hexlify(header[7])
+            }
+
+    @staticmethod
     def pretty_mac(mac):
-        unpacked = binascii.hexlify(mac).decode('utf-8')
+        unpacked = hexlify(mac).decode('utf-8')
         return ":".join([i + j for i, j in zip(unpacked[::2], unpacked[1::2])])
 
     def __init__(self, victim):
@@ -174,10 +196,7 @@ class ARP:
         while True:
             packet = s.recvfrom(2048)
 
-            ethernet_unpacked = unpack("!6s6s2s", packet[0][0:14])
-
-            arp_header = packet[0][14:42]
-            arp_unpacked = unpack("2s2s1s1s2s6s4s6s4s", arp_header)
+            ethernet_unpacked, arp_unpacked = self.get_headers(packet)
 
             source_ip = inet_ntoa(arp_unpacked[6])
             mac = arp_unpacked[5]
@@ -191,7 +210,6 @@ class ARP:
 
 
 class Relay:
-
     def __init__(self, name):
         self.name = name
 
@@ -201,10 +219,12 @@ class Relay:
         p.start()
 
     def relay(self, data):
-        import time
+        rs = socket(AF_PACKET, SOCK_RAW, htons(0x0003))
+
         while True:
-            print(data)
-            time.sleep(0.3)
+            eh, ah = ARP.get_headers(rs.recvfrom(4096))
+
+            ARP.analysis_header(eh)
 
     def __repr__(self):
         return "<%s>" % self.name
