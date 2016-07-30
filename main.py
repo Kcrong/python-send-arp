@@ -289,8 +289,6 @@ class Relay:
         """
         arp_partition = unpack("2s2s1s1s2s6s4s6s4s", packet[0][14:42])
         edited_arp_partition = arp_partition[:6] + (self.gateway_mac,) + arp_partition[7:]
-        # pack 양식 찾아보기
-        # 아래 코드에서 오류남
         packed_edited_arp_partition = pack("2s2s1s1s2s6s4s6s4s", *edited_arp_partition)
 
         # packet[1] 은 Interface info 므로 Send packet 에서 DROP
